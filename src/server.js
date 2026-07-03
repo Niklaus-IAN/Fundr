@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv').config({ quiet: true });
 const express = require('express');
 const { db, uid, potBalance } = require('./db');
 const { reconcilePayment } = require('./reconcile');
@@ -120,4 +120,9 @@ app.post('/webhooks/nomba', (req, res) => {
 app.get('/health', (_req, res) => res.json({ ok: true, service: 'dettypot' }));
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`DettyPot listening on :${PORT}`));
+// Only bind a port when run directly (npm start); tests import the app.
+if (require.main === module) {
+  app.listen(PORT, () => console.log(`DettyPot listening on :${PORT}`));
+}
+
+module.exports = app;

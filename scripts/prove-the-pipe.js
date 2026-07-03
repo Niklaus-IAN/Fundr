@@ -7,7 +7,7 @@
  *
  * Run:  node scripts/prove-the-pipe.js
  */
-require('dotenv').config();
+require('dotenv').config({ quiet: true });
 const nomba = require('../src/nomba');
 const crypto = require('node:crypto');
 
