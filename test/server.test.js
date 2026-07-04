@@ -7,6 +7,7 @@
  * "webhook endpoint live" and "create-pot flow" milestones without secrets.
  */
 process.env.DB_PATH = ':memory:'; // isolated per test-file (node runs files in child procs)
+process.env.NOMBA_WEBHOOK_SIGNING_KEY = ''; // these tests focus on reconciliation, not signatures
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
@@ -96,6 +97,38 @@ test('payment to an unknown NUBAN is quarantined, never added to the pot', async
   await delay(50);
   const { body } = await get(`/pots/${potId}`);
   assert.equal(body.collected, 300000, 'misdirected funds do not touch pot balance');
+});
+
+test('reconciles the REAL Nomba payload shape (data.transaction.*)', async () => {
+  // Fresh pot so this is isolated from the earlier assertions.
+  const { body: pot } = await post('/pots', {
+    title: 'Real Payload Pot',
+    target: 500000,
+    members: [{ name: 'Zainab' }],
+  });
+  const nuban = pot.members[0].nuban;
+
+  // Payload exactly as Nomba delivers inbound VA funding.
+  await post('/webhooks/nomba', {
+    event_type: 'payment_success',
+    requestId: 'req-real-1',
+    data: {
+      merchant: { userId: 'u-1', walletId: 'w-1' },
+      transaction: {
+        transactionId: 'API-VACT_TRA-real-1',
+        type: 'vact_transfer',
+        time: '2026-07-04T10:00:00Z',
+        responseCode: '',
+        transactionAmount: 5000, // ₦5,000
+        aliasAccountNumber: nuban, // the receiving VA
+        aliasAccountType: 'VIRTUAL',
+      },
+    },
+  });
+  await delay(50);
+  const { body } = await get(`/pots/${pot.potId}`);
+  assert.equal(body.collected, 500000, '₦5,000 -> 500,000 kobo credited from real payload shape');
+  assert.equal(body.members[0].paid, 500000);
 });
 
 test('GET unknown pot returns 404', async () => {

@@ -2,10 +2,18 @@ require('dotenv').config({ quiet: true });
 const express = require('express');
 const { db, uid, potBalance } = require('./db');
 const { reconcilePayment } = require('./reconcile');
+const { verifyNombaSignature } = require('./webhook-signature');
 const nomba = require('./nomba');
 
 const app = express();
 app.use(express.json());
+
+// Shared hackathon signing key. When set, we verify the nomba-signature header.
+const WEBHOOK_KEY = process.env.NOMBA_WEBHOOK_SIGNING_KEY || '';
+// Reject unverified webhooks only when explicitly enforcing. Default is
+// log-and-continue so a first-run field mismatch is diagnosable without
+// silently dropping a real payment — flip to true once signatures confirm.
+const ENFORCE_SIG = process.env.WEBHOOK_ENFORCE_SIGNATURE === 'true';
 
 /* ---------------------------------------------------------------- pots */
 
@@ -89,21 +97,41 @@ app.get('/pots/:id', (req, res) => {
  * live docs (PRD §6.3) before enabling strict rejection.
  */
 app.post('/webhooks/nomba', (req, res) => {
-  res.status(200).json({ received: true }); // ACK first
+  // Verify the nomba-signature header (Nomba signs specific fields, not the raw
+  // body). Cheap, synchronous — safe to run before the ACK.
+  if (WEBHOOK_KEY) {
+    const v = verifyNombaSignature({ body: req.body, getHeader: (n) => req.get(n), key: WEBHOOK_KEY });
+    if (v.ok) {
+      console.log('[webhook] signature verified ✔');
+    } else {
+      console.warn('[webhook] signature MISMATCH', {
+        received: v.received,
+        expected: v.expected,
+        signedString: v.signedString,
+      });
+      if (ENFORCE_SIG) return res.status(401).json({ error: 'invalid signature' });
+    }
+  }
+
+  res.status(200).json({ received: true }); // ACK first (Nomba 60s gateway timeout)
 
   const { event_type: eventType, data = {} } = req.body || {};
   console.log(`[webhook] ${eventType}`, JSON.stringify(data).slice(0, 400));
 
   if (eventType === 'payment_success') {
-    // Normalize payload -> reconciliation event.
-    // NOTE: confirm exact field names (receiving account number especially)
-    // against the live webhook payload — training docs are known to drift.
+    // Real inbound-VA payload uses data.transaction.* (confirmed against live
+    // docs). There is no merchant orderReference on inbound funding, so Nomba's
+    // per-transaction transactionId is our idempotency key. Legacy data.order.*
+    // paths kept as fallbacks in case the sandbox shape differs.
+    const txn = data.transaction || {};
     const evt = {
-      orderReference: data.order?.orderReference ?? data.orderReference,
-      orderId: data.order?.orderId ?? data.orderId,
-      amount: Math.round(Number(data.order?.amount ?? data.transactionAmount ?? 0) * 100),
+      orderReference: txn.transactionId ?? data.order?.orderReference ?? data.orderReference,
+      orderId: txn.sessionId ?? data.order?.orderId ?? data.orderId,
+      amount: Math.round(
+        Number(txn.transactionAmount ?? data.order?.amount ?? data.transactionAmount ?? 0) * 100
+      ),
       receivingNuban:
-        data.order?.accountNumber ?? data.accountNumber ?? data.receivingAccountNumber,
+        txn.aliasAccountNumber ?? data.order?.accountNumber ?? data.accountNumber ?? data.receivingAccountNumber,
     };
     try {
       const result = reconcilePayment(evt);
