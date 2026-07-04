@@ -2,7 +2,7 @@
 
 **Digital ajo with receipts.** A group-contribution pot engine where every member funds through their own dedicated Nomba virtual account, money auto-reconciles into one shared pot in real time, and the messy human reality of group money — overpayment, underpayment, dropouts, cancellations — is handled cleanly end-to-end.
 
-> Nomba × DevCareer Hackathon 2026 · Track: **Virtual Accounts as Infrastructure** · Solo build (Team Fundr)
+> Nomba × DevCareer Hackathon 2026 · Track: **Virtual Accounts as Infrastructure** · Team Fundr
 
 **Live:** <https://dettypot.onrender.com> — interactive API docs at [`/docs`](https://dettypot.onrender.com/docs) · **21 passing tests** (`npm test`) · naira-facing API.
 
