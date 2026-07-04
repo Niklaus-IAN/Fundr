@@ -2,7 +2,7 @@
  * OpenAPI 3.0 specification for the DettyPot backend.
  * Served as interactive Swagger UI at /docs and as raw JSON at /openapi.json.
  *
- * All monetary amounts are in KOBO (integer) — ₦1 = 100 kobo.
+ * All amounts in this API are in NAIRA (₦). Kobo is a backend-only detail.
  */
 module.exports = {
   openapi: '3.0.3',
@@ -12,7 +12,7 @@ module.exports = {
     description:
       'Digital ajo with receipts — a group-contribution pot engine on Nomba virtual accounts. ' +
       'Each member funds a dedicated virtual account; inbound payments auto-reconcile into one ' +
-      'shared pot via signed webhooks. **All amounts are in kobo (₦1 = 100 kobo).**',
+      'shared pot via signed webhooks. **All amounts are in naira (₦).**',
     contact: { name: 'Team Fundr', url: 'https://github.com/Niklaus-IAN/Fundr' },
   },
   servers: [
@@ -40,10 +40,10 @@ module.exports = {
               schema: { $ref: '#/components/schemas/CreatePotRequest' },
               examples: {
                 equalSplit: {
-                  summary: 'Equal split across 3 members',
+                  summary: 'Equal split across 3 members (₦9,000)',
                   value: {
                     title: 'Detty December Owambe',
-                    target: 900000,
+                    target: 9000,
                     deadline: '2026-12-20',
                     splitMode: 'equal',
                     members: [{ name: 'Ada' }, { name: 'Bola' }, { name: 'Chidi' }],
@@ -53,11 +53,11 @@ module.exports = {
                   summary: 'Custom per-member amounts (must sum to target)',
                   value: {
                     title: 'Shared Rent',
-                    target: 1000000,
+                    target: 10000,
                     splitMode: 'custom',
                     members: [
-                      { name: 'Ada', owed: 600000 },
-                      { name: 'Bola', owed: 400000 },
+                      { name: 'Ada', owed: 6000 },
+                      { name: 'Bola', owed: 4000 },
                     ],
                   },
                 },
@@ -74,10 +74,10 @@ module.exports = {
                 example: {
                   potId: 'a1b2c3d4-...',
                   title: 'Detty December Owambe',
-                  target: 900000,
+                  target: 9000,
                   members: [
-                    { memberId: 'm1-...', name: 'Ada', owed: 300000, nuban: '3116169739' },
-                    { memberId: 'm2-...', name: 'Bola', owed: 300000, nuban: '3571421355' },
+                    { memberId: 'm1-...', name: 'Ada', owed: 3000, nuban: '3116169739' },
+                    { memberId: 'm2-...', name: 'Bola', owed: 3000, nuban: '3571421355' },
                   ],
                 },
               },
@@ -111,14 +111,12 @@ module.exports = {
                 example: {
                   id: 'a1b2c3d4-...',
                   title: 'Detty December Owambe',
-                  target: 900000,
-                  target_naira: 9000,
+                  target: 9000,
                   status: 'open',
-                  collected: 300000,
-                  collected_naira: 3000,
+                  collected: 3000,
                   progress: 33,
                   members: [
-                    { id: 'm1-...', name: 'Ada', owed: 300000, owed_naira: 3000, paid: 300000, paid_naira: 3000, refunded: 0, status: 'active', nuban: '3116169739', remaining: 0, remaining_naira: 0 },
+                    { id: 'm1-...', name: 'Ada', status: 'active', nuban: '3116169739', owed: 3000, paid: 3000, refunded: 0, remaining: 0 },
                   ],
                 },
               },
@@ -192,7 +190,7 @@ module.exports = {
         required: ['title', 'target', 'members'],
         properties: {
           title: { type: 'string', example: 'Detty December Owambe' },
-          target: { type: 'integer', description: 'Target amount in kobo', example: 900000 },
+          target: { type: 'number', description: 'Target amount in naira', example: 9000 },
           deadline: { type: 'string', nullable: true, example: '2026-12-20' },
           splitMode: { type: 'string', enum: ['equal', 'custom'], default: 'equal' },
           strictMode: { type: 'boolean', description: 'Set expectedAmount on each VA to reject mismatched payments', default: false },
@@ -203,7 +201,7 @@ module.exports = {
               properties: {
                 name: { type: 'string', example: 'Ada' },
                 phone: { type: 'string', nullable: true },
-                owed: { type: 'integer', description: 'Required in custom split mode (kobo)' },
+                owed: { type: 'number', description: 'Required in custom split mode (naira)' },
               },
             },
           },
@@ -214,7 +212,7 @@ module.exports = {
         properties: {
           potId: { type: 'string' },
           title: { type: 'string' },
-          target: { type: 'integer' },
+          target: { type: 'number', description: 'Target amount in naira' },
           members: {
             type: 'array',
             items: {
@@ -222,7 +220,7 @@ module.exports = {
               properties: {
                 memberId: { type: 'string' },
                 name: { type: 'string' },
-                owed: { type: 'integer' },
+                owed: { type: 'number', description: 'Amount owed in naira' },
                 nuban: { type: 'string', nullable: true, description: 'Dedicated virtual account number' },
               },
             },
@@ -234,13 +232,11 @@ module.exports = {
         properties: {
           id: { type: 'string' },
           title: { type: 'string' },
-          target: { type: 'integer', description: 'Target (kobo) — source of truth' },
-          target_naira: { type: 'number', description: 'Target in naira (display only)' },
+          target: { type: 'number', description: 'Target amount in naira' },
           deadline: { type: 'string', nullable: true },
           split_mode: { type: 'string' },
           status: { type: 'string', enum: ['open', 'funded', 'paid_out', 'cancelled'] },
-          collected: { type: 'integer', description: 'Total collected (kobo), from the append-only ledger' },
-          collected_naira: { type: 'number', description: 'Total collected in naira (display only)' },
+          collected: { type: 'number', description: 'Total collected in naira, from the append-only ledger' },
           progress: { type: 'integer', description: 'Percent of target, 0–100' },
           members: {
             type: 'array',
@@ -249,15 +245,12 @@ module.exports = {
               properties: {
                 id: { type: 'string' },
                 name: { type: 'string' },
-                owed: { type: 'integer' },
-                owed_naira: { type: 'number' },
-                paid: { type: 'integer' },
-                paid_naira: { type: 'number' },
-                refunded: { type: 'integer' },
                 status: { type: 'string', enum: ['active', 'dropped'] },
                 nuban: { type: 'string', nullable: true },
-                remaining: { type: 'integer' },
-                remaining_naira: { type: 'number' },
+                owed: { type: 'number', description: 'Amount owed in naira' },
+                paid: { type: 'number', description: 'Amount paid in naira' },
+                refunded: { type: 'number', description: 'Amount refunded in naira' },
+                remaining: { type: 'number', description: 'Amount still owed in naira' },
               },
             },
           },

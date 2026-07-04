@@ -24,6 +24,14 @@ const WEBHOOK_KEY = process.env.NOMBA_WEBHOOK_SIGNING_KEY || '';
 // silently dropping a real payment — flip to true once signatures confirm.
 const ENFORCE_SIG = process.env.WEBHOOK_ENFORCE_SIGNATURE === 'true';
 
+/* --------------------------------------------------------------- money */
+
+// Money crosses the API boundary in NAIRA. Kobo (integer) is a backend-only
+// detail: convert naira -> kobo on the way in, kobo -> naira on the way out.
+// Nothing outside this file should ever see kobo.
+const toKobo = (naira) => Math.round(Number(naira || 0) * 100);
+const toNaira = (kobo) => Number(kobo || 0) / 100;
+
 /* ---------------------------------------------------------------- pots */
 
 /**
@@ -34,21 +42,23 @@ app.post('/pots', async (req, res) => {
   if (!title || !target || members.length === 0) {
     return res.status(400).json({ error: 'title, target and members are required' });
   }
+  // target + member owed arrive in naira; convert to kobo for storage/logic.
+  const targetKobo = toKobo(target);
   if (splitMode === 'custom') {
-    const sum = members.reduce((s, m) => s + (m.owed || 0), 0);
-    if (sum !== target) return res.status(400).json({ error: 'custom amounts must sum to target' });
+    const sumKobo = members.reduce((s, m) => s + toKobo(m.owed), 0);
+    if (sumKobo !== targetKobo) return res.status(400).json({ error: 'custom amounts must sum to target' });
   }
 
   const potId = uid();
-  const equalShare = Math.ceil(target / members.length);
+  const equalShare = Math.ceil(targetKobo / members.length);
   db.prepare(
     'INSERT INTO pots (id, title, target, deadline, split_mode) VALUES (?, ?, ?, ?, ?)'
-  ).run(potId, title, target, deadline ?? null, splitMode);
+  ).run(potId, title, targetKobo, deadline ?? null, splitMode);
 
   const created = [];
   for (const m of members) {
     const memberId = uid();
-    const owed = splitMode === 'equal' ? equalShare : m.owed;
+    const owed = splitMode === 'equal' ? equalShare : toKobo(m.owed);
     db.prepare(
       'INSERT INTO members (id, pot_id, name, phone, owed) VALUES (?, ?, ?, ?, ?)'
     ).run(memberId, potId, m.name, m.phone ?? null, owed);
@@ -70,10 +80,10 @@ app.post('/pots', async (req, res) => {
       // Sandbox VA cap (~2) may bite here — see PRD §6.4. Member is created;
       // VA can be retried once the cap is lifted.
     }
-    created.push({ memberId, name: m.name, owed, nuban });
+    created.push({ memberId, name: m.name, owed: toNaira(owed), nuban });
   }
 
-  res.status(201).json({ potId, title, target, members: created });
+  res.status(201).json({ potId, title, target: toNaira(targetKobo), members: created });
 });
 
 /** Live pot dashboard data. */
@@ -88,25 +98,27 @@ app.get('/pots/:id', (req, res) => {
     )
     .all(pot.id);
   const collected = potBalance(pot.id);
-  // Integer kobo stays the source of truth for all logic; *_naira are a
-  // display-only float (single boundary division, never fed back into math).
-  const naira = (kobo) => Number(kobo || 0) / 100;
+  // Progress is a ratio, computed in kobo internally; amounts go out in naira.
+  const progress = Math.min(100, Math.round((collected / pot.target) * 100));
   res.json({
-    ...pot,
-    target_naira: naira(pot.target),
-    collected,
-    collected_naira: naira(collected),
-    progress: Math.min(100, Math.round((collected / pot.target) * 100)),
-    members: members.map((m) => {
-      const remaining = Math.max(0, m.owed - m.paid);
-      return {
-        ...m,
-        remaining,
-        owed_naira: naira(m.owed),
-        paid_naira: naira(m.paid),
-        remaining_naira: naira(remaining),
-      };
-    }),
+    id: pot.id,
+    title: pot.title,
+    target: toNaira(pot.target),
+    deadline: pot.deadline,
+    split_mode: pot.split_mode,
+    status: pot.status,
+    collected: toNaira(collected),
+    progress,
+    members: members.map((m) => ({
+      id: m.id,
+      name: m.name,
+      status: m.status,
+      nuban: m.nuban,
+      owed: toNaira(m.owed),
+      paid: toNaira(m.paid),
+      refunded: toNaira(m.refunded),
+      remaining: toNaira(Math.max(0, m.owed - m.paid)),
+    })),
   });
 });
 

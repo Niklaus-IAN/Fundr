@@ -44,13 +44,13 @@ let potId, adaId, adaNuban;
 test('create-pot flow provisions a dedicated VA per member', async () => {
   const { status, body } = await post('/pots', {
     title: 'Detty December Owambe',
-    target: 900000, // ₦9,000 in kobo
+    target: 9000, // ₦9,000 (naira in, naira out)
     members: [{ name: 'Ada' }, { name: 'Bola' }, { name: 'Chidi' }],
   });
   assert.equal(status, 201);
   assert.equal(body.members.length, 3);
   body.members.forEach((m) => assert.match(m.nuban, /^\d{10}$/, 'each member gets a NUBAN'));
-  assert.equal(body.members[0].owed, 300000, 'equal split: ceil(900000/3)');
+  assert.equal(body.members[0].owed, 3000, 'equal split: ₦9,000 / 3 = ₦3,000');
 
   potId = body.potId;
   adaId = body.members[0].memberId;
@@ -72,10 +72,10 @@ test('payment_success webhook reconciles to the right member & pot', async () =>
 
   await delay(50); // handler ACKs, then reconciles inline
   const { body } = await get(`/pots/${potId}`);
-  assert.equal(body.collected, 300000, '₦3,000 -> 300,000 kobo credited to pot');
+  assert.equal(body.collected, 3000, '₦3,000 credited to pot');
   assert.equal(body.progress, 33);
   const ada = body.members.find((m) => m.id === adaId);
-  assert.equal(ada.paid, 300000);
+  assert.equal(ada.paid, 3000);
   assert.equal(ada.remaining, 0);
 });
 
@@ -86,7 +86,7 @@ test('duplicate webhook does not double-count (idempotent over HTTP)', async () 
   });
   await delay(50);
   const { body } = await get(`/pots/${potId}`);
-  assert.equal(body.collected, 300000, 'replay must not move the balance');
+  assert.equal(body.collected, 3000, 'replay must not move the balance');
 });
 
 test('payment to an unknown NUBAN is quarantined, never added to the pot', async () => {
@@ -96,14 +96,14 @@ test('payment to an unknown NUBAN is quarantined, never added to the pot', async
   });
   await delay(50);
   const { body } = await get(`/pots/${potId}`);
-  assert.equal(body.collected, 300000, 'misdirected funds do not touch pot balance');
+  assert.equal(body.collected, 3000, 'misdirected funds do not touch pot balance');
 });
 
 test('reconciles the REAL Nomba payload shape (data.transaction.*)', async () => {
   // Fresh pot so this is isolated from the earlier assertions.
   const { body: pot } = await post('/pots', {
     title: 'Real Payload Pot',
-    target: 500000,
+    target: 5000, // ₦5,000
     members: [{ name: 'Zainab' }],
   });
   const nuban = pot.members[0].nuban;
@@ -127,8 +127,8 @@ test('reconciles the REAL Nomba payload shape (data.transaction.*)', async () =>
   });
   await delay(50);
   const { body } = await get(`/pots/${pot.potId}`);
-  assert.equal(body.collected, 500000, '₦5,000 -> 500,000 kobo credited from real payload shape');
-  assert.equal(body.members[0].paid, 500000);
+  assert.equal(body.collected, 5000, '₦5,000 credited from real payload shape');
+  assert.equal(body.members[0].paid, 5000);
 });
 
 test('GET unknown pot returns 404', async () => {
