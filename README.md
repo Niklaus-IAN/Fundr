@@ -57,6 +57,8 @@ npm start                        # server + webhook endpoint on :3000
 
 Expose `/webhooks/nomba` (e.g. `ngrok http 3000`), register the URL via the hackathon form, send ₦100 to the printed NUBAN from a real bank app, and watch the credit reconcile.
 
+**API docs:** interactive Swagger UI at [`/docs`](https://dettypot.onrender.com/docs) (raw OpenAPI at `/openapi.json`). Live deploy: <https://dettypot.onrender.com>.
+
 ## Status (Stage-1 progress check)
 
 - [x] PRD complete — see [`docs/`](docs/)

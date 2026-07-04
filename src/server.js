@@ -1,12 +1,21 @@
 require('dotenv').config({ quiet: true });
 const express = require('express');
+const swaggerUi = require('swagger-ui-express');
 const { db, uid, potBalance } = require('./db');
 const { reconcilePayment } = require('./reconcile');
 const { verifyNombaSignature } = require('./webhook-signature');
+const openapi = require('./openapi');
 const nomba = require('./nomba');
 
 const app = express();
 app.use(express.json());
+
+/* ---------------------------------------------------------------- docs */
+
+// Interactive Swagger UI at /docs, raw spec at /openapi.json, root -> docs.
+app.get('/', (_req, res) => res.redirect('/docs'));
+app.get('/openapi.json', (_req, res) => res.json(openapi));
+app.use('/docs', swaggerUi.serve, swaggerUi.setup(openapi, { customSiteTitle: 'DettyPot API' }));
 
 // Shared hackathon signing key. When set, we verify the nomba-signature header.
 const WEBHOOK_KEY = process.env.NOMBA_WEBHOOK_SIGNING_KEY || '';
