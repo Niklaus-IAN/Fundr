@@ -1,0 +1,35 @@
+# Render Blueprint — one-click deploy of the DettyPot backend.
+# In the Render dashboard: New +  ->  Blueprint  ->  connect this repo.
+# Render reads this file, then prompts you to fill the secret env vars below
+# (the ones marked `sync: false`) before the first deploy.
+services:
+  - type: web
+    name: dettypot
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      # Node 24 is required — the DB layer uses the built-in node:sqlite module.
+      - key: NODE_VERSION
+        value: "24"
+      - key: NOMBA_BASE_URL
+        value: https://sandbox.nomba.com
+      # Shared hackathon webhook signing key (public, from the registration form).
+      - key: NOMBA_WEBHOOK_SIGNING_KEY
+        value: NombaHackathon2026
+      # Keep false until a real signed webhook confirms the signature matches,
+      # then set true in the dashboard to reject forgeries.
+      - key: WEBHOOK_ENFORCE_SIGNATURE
+        value: "false"
+      # Secrets — Render will prompt for these; they are NOT stored in the repo.
+      - key: NOMBA_PARENT_ACCOUNT_ID
+        sync: false
+      - key: NOMBA_SUB_ACCOUNT_ID
+        sync: false
+      - key: NOMBA_CLIENT_ID
+        sync: false
+      - key: NOMBA_PRIVATE_KEY
+        sync: false
