@@ -4,6 +4,8 @@
 
 > Nomba × DevCareer Hackathon 2026 · Track: **Virtual Accounts as Infrastructure** · Solo build (Team Fundr)
 
+**Live:** <https://dettypot.onrender.com> — interactive API docs at [`/docs`](https://dettypot.onrender.com/docs) · **21 passing tests** (`npm test`) · naira-facing API.
+
 ## The problem
 
 Every Nigerian group-money arrangement — ajo/esusu, group trips, shared rent, joint gifts — runs on WhatsApp and trust, and breaks the same way: one person fronts the money, chases everyone, manually tracks who paid, eats the shortfall, and has no receipts. Splitwise can't move money in Nigeria; PiggyVest saves but doesn't coordinate a group toward a shared spend with payout. **DettyPot is the money rail for group intent.**
@@ -29,45 +31,65 @@ CREATE ──▶ FUND ──▶ RECONCILE ──▶ PAY OUT
 
 ## Architecture
 
-- **Backend:** Node/Express (`src/server.js`)
-- **Nomba client:** auth + proactive token refresh, VA provisioning, transfers (`src/nomba.js`)
-- **Reconciliation engine:** webhook → VA → member → ledger, idempotent on `orderReference` (`src/reconcile.js`)
+- **Backend:** Node/Express (`src/server.js`), deployed on Render with a live OpenAPI/Swagger UI at [`/docs`](https://dettypot.onrender.com/docs).
+- **Nomba client:** auth + proactive token refresh, VA provisioning, transfers (`src/nomba.js`).
+- **Webhook security:** `nomba-signature` verification — HMAC-SHA256 over the documented signed fields (`src/webhook-signature.js`); rejects forgeries when enforcement is on.
+- **Reconciliation engine:** webhook → VA → member → ledger, idempotent on Nomba's per-transaction id (`src/reconcile.js`).
 - **Data:** append-only **ledger is the single source of truth** for pot balance (`src/db.js`). SQLite for dev velocity, schema ports 1:1 to Postgres.
-- **Planned surface:** Expo/React Native app (web fallback per Day-3 decision gate)
+- **Money:** stored and reconciled in **kobo (integer)** for penny-exact arithmetic; the **API speaks naira (₦)** — conversion happens only at the request/response boundary.
+- **Planned surface:** Expo/React Native app (web fallback per Day-3 decision gate).
 
 ### Data model
 
 `Pot → Members → VirtualAccounts`, with `Contributions` (unique `order_reference` = idempotency) and an append-only `Ledger`. Misdirected payments land in `quarantine` — never silently absorbed.
 
-## Reconciliation guarantees (implemented & tested)
+### API
 
-1. **Idempotent** — replayed webhooks for the same `orderReference` never double-count
-2. **Attributed** — receiving NUBAN → member mapping stored at provisioning time
-3. **Classified** — every credit is checked against the member's owed amount: exact / overpayment (excess computed) / underpayment (shortfall computed)
-4. **Quarantined** — payments to unmapped VAs are flagged for organizer review
+All amounts are in **naira**. Full interactive reference at [`/docs`](https://dettypot.onrender.com/docs).
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/pots` | create a pot + provision a dedicated VA per member |
+| `GET` | `/pots/:id` | live pot dashboard (progress, per-member paid/owed/remaining) |
+| `POST` | `/webhooks/nomba` | `payment_success` → verify signature → reconcile |
+| `GET` | `/health` | liveness check |
+
+## Reconciliation guarantees (implemented & tested — 21 passing tests)
+
+1. **Verified** — the `nomba-signature` header is checked (HMAC-SHA256 over the documented fields) before a webhook is trusted
+2. **Idempotent** — replayed webhooks for the same transaction never double-count
+3. **Attributed** — receiving NUBAN → member mapping stored at provisioning time
+4. **Classified** — every credit is checked against the member's owed amount: exact / overpayment (excess computed) / underpayment (shortfall computed)
+5. **Quarantined** — payments to unmapped VAs are flagged for organizer review
+
+Covered by unit tests (reconciliation + signature) and HTTP integration tests (create-pot → webhook → dashboard). Run `npm test`.
 
 ## Run it
 
 ```bash
 npm install
 cp .env.example .env   # add your Nomba sandbox credentials
+npm test                         # 21 passing tests (no credentials needed)
 node scripts/prove-the-pipe.js   # auth + provision a VA, prints the NUBAN
-npm start                        # server + webhook endpoint on :3000
+npm start                        # server + docs + webhook endpoint on :3000
 ```
 
-Expose `/webhooks/nomba` (e.g. `ngrok http 3000`), register the URL via the hackathon form, send ₦100 to the printed NUBAN from a real bank app, and watch the credit reconcile.
+Open [`http://localhost:3000/docs`](http://localhost:3000/docs) for the interactive API. Expose `/webhooks/nomba` (deployed on Render, or `ngrok http 3000` locally), register the URL via the hackathon form, send ₦100 to a member's NUBAN from a real bank app, and watch the credit reconcile.
 
-**API docs:** interactive Swagger UI at [`/docs`](https://dettypot.onrender.com/docs) (raw OpenAPI at `/openapi.json`). Live deploy: <https://dettypot.onrender.com>.
+**Deployed:** <https://dettypot.onrender.com> · **API docs:** [`/docs`](https://dettypot.onrender.com/docs) (raw OpenAPI at `/openapi.json`). Requires Node ≥ 24 (built-in `node:sqlite`). See [`DEPLOY.md`](DEPLOY.md).
 
 ## Status (Stage-1 progress check)
 
 - [x] PRD complete — see [`docs/`](docs/)
 - [x] Data model implemented (Pot, Member, VirtualAccount, Contribution, Ledger, Quarantine)
-- [x] Nomba client: auth, token refresh, VA provisioning, transfers
-- [x] Reconciliation engine with idempotency, over/underpayment classification, quarantine — unit-verified
+- [x] Nomba client: auth, token refresh, VA provisioning, transfers — **proven live** (auth + VA provisioning against the sandbox)
+- [x] Reconciliation engine with idempotency, over/underpayment classification, quarantine — **21 passing tests**
+- [x] Webhook signature verification (`nomba-signature`, HMAC-SHA256)
 - [x] Create-pot flow with per-member VA provisioning
 - [x] Webhook endpoint (ACK-first per Nomba's 60s gateway timeout)
-- [ ] End-to-end sandbox webhook test with a real transfer (webhook URL registration pending)
+- [x] Naira-facing API (kobo internal), OpenAPI/Swagger docs at `/docs`
+- [x] Deployed live on Render (always-reachable URL)
+- [ ] End-to-end webhook credit with a real transfer (URL registered; awaiting Nomba activation)
 - [ ] Edge-case engine actions: auto-refund via Transfers, dropout rebalance, cancellation refunds
 - [ ] Payout + settlement receipt
 - [ ] Mobile/web dashboard
