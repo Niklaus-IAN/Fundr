@@ -88,11 +88,25 @@ app.get('/pots/:id', (req, res) => {
     )
     .all(pot.id);
   const collected = potBalance(pot.id);
+  // Integer kobo stays the source of truth for all logic; *_naira are a
+  // display-only float (single boundary division, never fed back into math).
+  const naira = (kobo) => Number(kobo || 0) / 100;
   res.json({
     ...pot,
+    target_naira: naira(pot.target),
     collected,
+    collected_naira: naira(collected),
     progress: Math.min(100, Math.round((collected / pot.target) * 100)),
-    members: members.map((m) => ({ ...m, remaining: Math.max(0, m.owed - m.paid) })),
+    members: members.map((m) => {
+      const remaining = Math.max(0, m.owed - m.paid);
+      return {
+        ...m,
+        remaining,
+        owed_naira: naira(m.owed),
+        paid_naira: naira(m.paid),
+        remaining_naira: naira(remaining),
+      };
+    }),
   });
 });
 
